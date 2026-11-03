@@ -48,6 +48,15 @@ export async function handler(chatUpdate) {
 	if (!chatUpdate?.messages?.length) return;
 	this.pushMessage(chatUpdate.messages).catch(console.error);
 
+	// Auto read: tandai semua pesan masuk sebagai dibaca sebelum filter apa pun (banned, public, umur pesan, dll).
+	// Status (status@broadcast) dan newsletter dilewati supaya bot tidak ikut "melihat" status orang.
+	if (chatUpdate.type === 'notify') {
+		const keys = chatUpdate.messages
+			.filter(({ key, message }) => message && key?.id && !key.fromMe && key.remoteJid !== 'status@broadcast' && !key.remoteJid?.endsWith('@newsletter'))
+			.map(({ key }) => key);
+		if (keys.length) this.readMessages(keys).catch(() => {});
+	}
+
 	let m = chatUpdate.messages.at(-1);
 	if (!m || !m.message) return;
 	if (Date.now() / 1000 - toSeconds(m.messageTimestamp) > MAX_AGE_SECONDS) return;
@@ -184,7 +193,6 @@ export async function handler(chatUpdate) {
 			} catch (e) {
 				console.error('[print]', e.message);
 			}
-			if (global.db.data.settings[this.user.jid]?.autoread) await this.readMessages([m.key]).catch(() => {});
 		}
 	}
 }
