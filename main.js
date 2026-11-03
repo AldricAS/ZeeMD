@@ -106,6 +106,19 @@ function askNumber() {
 }
 
 let reconnectDelay = 3000;
+let onlineTimer = null;
+
+function stopOnlineLoop() {
+	clearInterval(onlineTimer);
+	onlineTimer = null;
+}
+
+function startOnlineLoop(conn) {
+	stopOnlineLoop();
+	const ping = () => conn.sendPresenceUpdate('available').catch(() => {});
+	ping();
+	onlineTimer = setInterval(ping, 60 * 1000);
+}
 
 async function connect() {
 	const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
@@ -119,7 +132,8 @@ async function connect() {
 		browser: Browsers.ubuntu('Chrome'),
 		auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
 		printQRInTerminal: false,
-		markOnlineOnConnect: false,
+		markOnlineOnConnect: true,
+		keepAliveIntervalMs: 25000,
 		syncFullHistory: false,
 		generateHighQualityLinkPreview: true,
 		cachedGroupMetadata: async (jid) => conn.chats[jid]?.metadata,
@@ -141,15 +155,26 @@ async function connect() {
 
 	conn.ev.on('creds.update', saveCreds);
 
+	// Tolak otomatis setiap panggilan suara/video yang masuk.
+	conn.ev.on('call', async (calls) => {
+		for (const call of calls) {
+			if (call.status !== 'offer') continue;
+			await conn.rejectCall(call.id, call.from).catch((e) => log(chalk.red('CALL'), `gagal menolak panggilan: ${e.message}`));
+			log(chalk.yellow('CALL'), `panggilan ${call.isVideo ? 'video' : 'suara'} dari ${String(call.from).split('@')[0]} ditolak`);
+		}
+	});
+
 	conn.ev.on('connection.update', ({ connection, lastDisconnect }) => {
 		if (connection === 'open') {
 			reconnectDelay = 3000;
 			conn.user.jid = conn.decodeJid(conn.user.id);
 			global.db.data.settings[conn.user.jid] ||= { public: true, gconly: false, autoread: false };
 			log(chalk.green('KONEK'), `${conn.user.name || global.namebot} (${conn.user.jid.split('@')[0]})`);
+			startOnlineLoop(conn);
 		}
 		if (connection !== 'close') return;
 
+		stopOnlineLoop();
 		conn.ev.removeAllListeners();
 		const code = lastDisconnect?.error?.output?.statusCode;
 		if (code === DisconnectReason.loggedOut) {
