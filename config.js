@@ -6,7 +6,7 @@ global.owner = [['6280000000000', 'Owner', true]];
 
 global.namebot = 'ZeeMD';
 global.author = 'Zee';
-global.source = 'https://github.com/';
+global.source = 'https://github.com/AldricAS/ZeeMD';
 
 global.prefix = /^[./!#]/;
 
